@@ -28,10 +28,7 @@ app.use(cors({
 //validation
 const {registerValidator,loginValidator} = require('./services/validation')
 
-//router test
-app.get('/',(req,res)=>{
-    res.send("<h1>test</h1>")
-})
+
 // check auth
 app.get('/api/checkauth',(req,res)=>{
     const token = req.cookies['authcookie']
@@ -44,6 +41,15 @@ app.get('/api/checkauth',(req,res)=>{
         return res.status(200).json({status:"pass", user: decoded})
     })
     
+})
+//logout
+app.get('/api/logout',(req,res)=>{
+    const cookie = req.cookies['authcookie']
+    if(cookie){
+        res.clearCookie("authcookie")
+        return res.status(200).json({status:"success"})
+    }
+    res.end()
 })
 //api 
 app.post('/api/register',registerValidator,(req,res)=>{
@@ -82,28 +88,34 @@ app.post('/api/login',loginValidator,(req,res)=>{
 
     //validation result and check validation
     const vali = validationResult(req)
-    if(!vali.isEmpty()) return res.json({message:"Validation Error"})
+    if(!vali.isEmpty()) {
+        return res.status(400).json({message:"Validation Error"})
+    }
     
     const username = req.body.username
     const password = req.body.password
 
     
     sql.query(query,[username],(err,result)=>{
-        if(err) return res.status(401).json({message:"Error query"})
-        if(result.length > 0){
-            const user = result[0]
-            bcrypt.compare(password,user.password,(err,result)=>{
-                if(err) return res.status(401).json({message:"Error comparing"})
-                if(result) {
-                    const {username,email,fname} = user
-                    const token = jwt.sign({username,email,fname},secret)
-                    res.cookie('authcookie',token,{httpOnly:true,maxAge:900000})
-                    return res.status(200).json({status:"pass"})
-                }
-                return res.status(401).json({status:"wrong password"})
-            })
+        if(err) return res.status(500).json({message:"Error query"})
+        
+        if(result.length == 0){
+            return res.status(401).json({status:"No User"})
         }
-        return res.status(401).json({status:"No User"})
+        const user = result[0]
+        bcrypt.compare(password,user.password,(err,result)=>{
+            if(err) return res.status(500).json({message:"Error comparing"})
+            if(!result) {
+
+                return res.status(401).json({status:"wrong password"})
+            }
+            const {username,email,fname} = user
+            const token = jwt.sign({username,email,fname},secret)
+            res.cookie('authcookie',token,{httpOnly:true,maxAge:900000})
+            
+            return res.status(200).json({status:"pass"})
+        })
+        
         
     })
 })
