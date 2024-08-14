@@ -15,7 +15,6 @@ const loginValidator = [
 ]
 
 const insertValidator = [
-    body('author').trim().isLength({min:1}).escape(),
     body('title').trim().isLength({min:1}).escape(),
     body('description').isLength({min:1}).trim().escape(),
     body('urlToImage').isLength({min:1}).isURL(),

@@ -8,6 +8,14 @@ require("dotenv").config();
 const { validationResult } = require("express-validator");
 //db
 const sql = require("./services/server");
+//validation
+const {
+  registerValidator,
+  loginValidator,
+  insertValidator,
+} = require("./services/validation");
+
+const auth = require('./services/auth')
 
 const saltRounds = 10;
 //using express
@@ -28,12 +36,7 @@ app.use(
   })
 );
 
-//validation
-const {
-  registerValidator,
-  loginValidator,
-  insertValidator,
-} = require("./services/validation");
+
 
 // check auth
 app.get("/api/checkauth", (req, res) => {
@@ -65,19 +68,20 @@ app.post("/api/register", registerValidator, (req, res) => {
   }
   //query
   const query =
-    "INSERT INTO Users(username,email,fname,lname,password) Values(?,?,?,?,?)";
+    "INSERT INTO Users(username,email,fname,lname,password,createdAt) Values(?,?,?,?,?,?)";
   //req data from body
   const data = [
     req.body.username,
     req.body.email,
     req.body.fname,
     req.body.lname,
+    
   ];
   //start hash
   bcrypt.hash(req.body.password, saltRounds, (error, hash) => {
     if (error) res.status(400).json({ message: "hash failed" });
     //start query
-    sql.query(query, [...data, hash], (err) => {
+    sql.query(query, [...data, hash,new Date()], (err) => {
       if (err) {
         return res.status(400).json({ message: "Error register" });
       }
@@ -116,7 +120,7 @@ app.post("/api/login", loginValidator, (req, res) => {
       if (!result) {
         return res.status(401).json({ status: "wrong password" });
       }
-      const { username, email, fname } = user;
+      const { id,username, email, fname } = user;
       const token = jwt.sign({ username, email, fname }, secret, {
         expiresIn: "1day",
       });
@@ -128,26 +132,31 @@ app.post("/api/login", loginValidator, (req, res) => {
 });
 
 //create blog
-app.post("/api/create", insertValidator, (req, res) => {
-  const query =
-    "INSERT INTO Blog(author,title,description,urlToImage,publishedAt,content,catagory) VALUES(?)";
+app.post("/api/create",auth, insertValidator, (req, res) => {
 
+  const user = req.user
+  const query =
+    "INSERT INTO Blog(title,description,urlToImage,publishedAt,content,catagory,author) VALUES(?)";
+  
   //check validator
   const error = validationResult(req);
   if (!error.isEmpty()) return res.json({ message: "Validation Error" });
-
+  
   const data = [
-    req.body.author,
     req.body.title,
     req.body.description,
     req.body.urlToImage,
     req.body.publishedAt,
     req.body.content,
-    req.body.catagory
+    req.body.catagory,
+    user.username
   ];
 
   sql.query(query, [data], (error) => {
-    if (error) return res.status(500).json({ message: error });
+    if (error) {
+      
+      return res.status(500).json({ message: error });
+    }
     res.status(200).json({ message: "Success" });
     res.end();
   });
@@ -165,9 +174,76 @@ app.get("/api/getblog", (req, res) => {
   } catch (error) {}
 });
 
-//delete
-app.post("/api/delete/:id",(req,res)=>{
-    //prepared
+//blog delete
+app.post("/api/blog/delete/:id",auth,(req,res)=>{
+
+    const query = "DELETE FROM Blog where id = ?"
+    const id = req.params.id
+    sql.query(query,[id],(err)=>{
+      if(err) return res.status(500).json({msg : "Delete error"})
+      res.status(200).json({status : "Success"})
+      res.end()
+    })
+    
+    
+
+})
+
+//get total project,client
+app.get('/api/getallnum',auth,(req,res)=>{
+
+})
+
+//get all user
+app.get('/api/user/getall' , auth ,(req,res)=>{
+  
+  const query = "SELECT username,fname,urlToImage,email  FROM Users"
+  sql.query(query,(err,result)=>{
+    if(err) return res.status(500).json({message : "Error"})
+    if (result.length === 0) return res.status(404).json({message : "No data"})
+    res.status(200).json({result : result})
+    res.end()
+  })
+})
+
+//getblog by id 
+app.get('/api/blog/:id',(req,res)=>{
+  const query = "Select * from Blog where id= ?"
+  const id = req.params.id
+
+  sql.query(query,[id],(err,result)=>{
+    if(err) return res.status(500).json({status : "Server error"})
+    if(result.length === 0 ) return res.status(404).json({message : "No blog"})
+    res.status(200).json(result)
+    res.end()
+  })
+})
+
+//post
+app.put('/api/blog/edit/:id',auth,(req,res)=>{
+  const query = "UPDATE Blog SET title = ? ,description = ? ,urlToImage = ?,catagory = ? ,content= ? where id = ?"
+
+  sql.query(query,[req.body.title,req.body.description,req.body.urlToImage,req.body.catagory,req.body.content,req.params.id],(err)=>{
+    if(err) return res.status(500).json({message:err})
+    res.status(200).json({status:"success"  })
+    res.end()
+   
+  })
+})
+
+//get total data
+app.get('/api/data/gettotal',auth,(req,res)=>{
+    const query1 = "SELECT COUNT(*) as Users FROM Users;"
+    const query2 = "SELECT COUNT(*) as Blog FROM Blog;"
+    sql.query(query1,(err,result1)=>{
+      if(err) return res.status(500).json({status : "Server error" , err})
+      sql.query(query2,(err,result2)=>{
+        if(err) return res.status(500).json({status : "Server error" , err})
+        res.status(200).json({Blog : result2,Users : result1})
+        res.end()
+    })
+    })
+    
 })
 
 app.listen(PORT, (err) => {
